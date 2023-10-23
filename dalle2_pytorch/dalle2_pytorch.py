@@ -48,9 +48,8 @@ def identity(t, *args, **kwargs):
 def maybe(fn):
     @wraps(fn)
     def inner(x):
-        if not exists(x):
-            return x
-        return fn(x)
+        return x if not exists(x) else fn(x)
+
     return inner
 
 def default(val, d):
@@ -83,13 +82,11 @@ def eval_decorator(fn):
 def is_list_str(x):
     if not isinstance(x, (list, tuple)):
         return False
-    return all([type(el) == str for el in x])
+    return all(type(el) == str for el in x)
 
 def pad_tuple_to_length(t, length, fillvalue = None):
     remain_length = length - len(t)
-    if remain_length <= 0:
-        return t
-    return (*t, *((fillvalue,) * remain_length))
+    return t if remain_length <= 0 else (*t, *((fillvalue,) * remain_length))
 
 # for controlling freezing of CLIP
 
@@ -335,13 +332,11 @@ def discretized_gaussian_log_likelihood(x, *, means, log_scales, thres = 0.999):
     log_one_minus_cdf_min = log(1. - cdf_min)
     cdf_delta = cdf_plus - cdf_min
 
-    log_probs = torch.where(x < -thres,
+    return torch.where(
+        x < -thres,
         log_cdf_plus,
-        torch.where(x > thres,
-            log_one_minus_cdf_min,
-            log(cdf_delta)))
-
-    return log_probs
+        torch.where(x > thres, log_one_minus_cdf_min, log(cdf_delta)),
+    )
 
 def cosine_beta_schedule(timesteps, s = 0.008):
     """
@@ -527,13 +522,10 @@ class MLP(nn.Module):
             norm_fn()
         )]
 
-        for _ in range(depth - 1):
-            layers.append(nn.Sequential(
-                nn.Linear(hidden_dim, hidden_dim),
-                nn.SiLU(),
-                norm_fn()
-            ))
-
+        layers.extend(
+            nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.SiLU(), norm_fn())
+            for _ in range(depth - 1)
+        )
         layers.append(nn.Linear(hidden_dim, dim_out))
         self.net = nn.Sequential(*layers)
 
@@ -919,7 +911,9 @@ class DiffusionPrior(BaseGaussianDiffusion):
         self.init_image_embed_l2norm = init_image_embed_l2norm
 
     def p_mean_variance(self, x, t, text_cond, clip_denoised = False, cond_scale = 1.):
-        assert not (cond_scale != 1. and not self.can_classifier_guidance), 'the model was not trained with conditional dropout, and thus one cannot use classifier free guidance (cond_scale anything other than 1)'
+        assert (
+            cond_scale == 1.0 or self.can_classifier_guidance
+        ), 'the model was not trained with conditional dropout, and thus one cannot use classifier free guidance (cond_scale anything other than 1)'
 
         pred = self.net.forward_with_cond_scale(x, t, cond_scale = cond_scale, **text_cond)
 
@@ -981,8 +975,7 @@ class DiffusionPrior(BaseGaussianDiffusion):
 
         target = noise if not self.predict_x_start else image_embed
 
-        loss = self.loss_fn(pred, target)
-        return loss
+        return self.loss_fn(pred, target)
 
     @torch.no_grad()
     @eval_decorator
@@ -1045,7 +1038,11 @@ class DiffusionPrior(BaseGaussianDiffusion):
     ):
         assert exists(text) ^ exists(text_embed), 'either text or text embedding must be supplied'
         assert exists(image) ^ exists(image_embed), 'either text or text embedding must be supplied'
-        assert not (self.condition_on_text_encodings and (not exists(text_encodings) and not exists(text))), 'text encodings must be present if you specified you wish to condition on it on initialization'
+        assert (
+            not self.condition_on_text_encodings
+            or exists(text_encodings)
+            or exists(text)
+        ), 'text encodings must be present if you specified you wish to condition on it on initialization'
 
         if exists(image):
             image_embed, _ = self.clip.embed_image(image)
@@ -1543,7 +1540,9 @@ class Unet(nn.Module):
 
         # add low resolution conditioning, if present
 
-        assert not (self.lowres_cond and not exists(lowres_cond_img)), 'low resolution conditioning image must be present'
+        assert not self.lowres_cond or exists(
+            lowres_cond_img
+        ), 'low resolution conditioning image must be present'
 
         if exists(lowres_cond_img):
             x = torch.cat((x, lowres_cond_img), dim = 1)
@@ -1902,7 +1901,9 @@ class Decoder(BaseGaussianDiffusion):
             unet.to(device)
 
     def p_mean_variance(self, unet, x, t, image_embed, text_encodings = None, text_mask = None, lowres_cond_img = None, clip_denoised = True, predict_x_start = False, learned_variance = False, cond_scale = 1., model_output = None):
-        assert not (cond_scale != 1. and not self.can_classifier_guidance), 'the decoder was not trained with conditional dropout, and thus one cannot use classifier free guidance (cond_scale anything other than 1)'
+        assert (
+            cond_scale == 1.0 or self.can_classifier_guidance
+        ), 'the decoder was not trained with conditional dropout, and thus one cannot use classifier free guidance (cond_scale anything other than 1)'
 
         pred = default(model_output, lambda: unet.forward_with_cond_scale(x, t, image_embed = image_embed, text_encodings = text_encodings, text_mask = text_mask, cond_scale = cond_scale, lowres_cond_img = lowres_cond_img))
 
@@ -2074,8 +2075,12 @@ class Decoder(BaseGaussianDiffusion):
             assert exists(self.clip)
             _, text_encodings, text_mask = self.clip.embed_text(text)
 
-        assert not (self.condition_on_text_encodings and not exists(text_encodings)), 'text or text encodings must be passed into decoder if specified'
-        assert not (not self.condition_on_text_encodings and exists(text_encodings)), 'decoder specified not to be conditioned on text, yet it is presented'
+        assert not self.condition_on_text_encodings or exists(
+            text_encodings
+        ), 'text or text encodings must be passed into decoder if specified'
+        assert self.condition_on_text_encodings or not exists(
+            text_encodings
+        ), 'decoder specified not to be conditioned on text, yet it is presented'
 
         img = None
         is_cuda = next(self.parameters()).is_cuda
@@ -2221,7 +2226,4 @@ class DALLE2(nn.Module):
         if return_pil_images:
             images = list(map(self.to_pil, images.unbind(dim = 0)))
 
-        if one_text:
-            return images[0]
-
-        return images
+        return images[0] if one_text else images

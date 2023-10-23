@@ -107,16 +107,10 @@ def split(t, split_size = None):
     if isinstance(t, torch.Tensor):
         return t.split(split_size, dim = 0)
 
-    if isinstance(t, Iterable):
-        return split_iterable(t, split_size)
-
-    return TypeError
+    return split_iterable(t, split_size) if isinstance(t, Iterable) else TypeError
 
 def find_first(cond, arr):
-    for el in arr:
-        if cond(el):
-            return el
-    return None
+    return next((el for el in arr if cond(el)), None)
 
 def split_args_and_kwargs(*args, split_size = None, **kwargs):
     all_args = (*args, *kwargs.values())
@@ -177,7 +171,7 @@ def save_diffusion_model(save_path, model, optimizer, scaler, config, image_embe
                       scaler=scaler.state_dict(),
                       hparams = config,
                       image_embed_dim = {"image_embed_dim":image_embed_dim})
-    torch.save(state_dict, save_path+'/'+str(time.time())+'_saved_model.pth')
+    torch.save(state_dict, f'{save_path}/{str(time.time())}_saved_model.pth')
 
 # exponential moving average wrapper
 
@@ -340,7 +334,7 @@ class DiffusionPriorTrainer(nn.Module):
 
     def save(self, path, overwrite = True, **kwargs):
         path = Path(path)
-        assert not (path.exists() and not overwrite)
+        assert not path.exists() or overwrite
         path.parent.mkdir(parents = True, exist_ok = True)
 
         save_obj = dict(
@@ -506,7 +500,7 @@ class DecoderTrainer(nn.Module):
 
     def save(self, path, overwrite = True, **kwargs):
         path = Path(path)
-        assert not (path.exists() and not overwrite)
+        assert not path.exists() or overwrite
         path.parent.mkdir(parents = True, exist_ok = True)
 
         save_obj = dict(

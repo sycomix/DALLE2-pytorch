@@ -232,10 +232,7 @@ def train(
             config = config
         )
 
-    # Obtain the utilized device.
-
-    has_cuda = torch.cuda.is_available()
-    if has_cuda:
+    if has_cuda := torch.cuda.is_available():
         device = torch.device(f"cuda:{gpu_device}")
         torch.cuda.set_device(device)
 

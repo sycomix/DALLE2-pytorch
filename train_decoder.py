@@ -117,7 +117,7 @@ def get_example_data(dataloader, device, n=5):
         captions.extend(list(txt))
         if len(images) >= n:
             break
-    print("Generated {} examples".format(len(images)))
+    print(f"Generated {len(images)} examples")
     return list(zip(images[:n], embeddings[:n], captions[:n]))
 
 def generate_samples(trainer, example_data, text_prepend=""):
@@ -198,8 +198,7 @@ def save_trainer(tracker, trainer, epoch, step, validation_losses, relative_path
     """
     if isinstance(relative_paths, str):
         relative_paths = [relative_paths]
-    trainer_state_dict = {}
-    trainer_state_dict["trainer"] = trainer.state_dict()
+    trainer_state_dict = {"trainer": trainer.state_dict()}
     trainer_state_dict['epoch'] = epoch
     trainer_state_dict['step'] = step
     trainer_state_dict['validation_losses'] = validation_losses
@@ -442,7 +441,7 @@ def initialize_training(config):
 @click.command()
 @click.option("--config_file", default="./train_decoder_config.json", help="Path to config file")
 def main(config_file):
-    print("Recalling config from {}".format(config_file))
+    print(f"Recalling config from {config_file}")
     config = TrainDecoderConfig.from_json_path(config_file)
     initialize_training(config)
 

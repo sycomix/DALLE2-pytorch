@@ -112,10 +112,7 @@ class DiffusionPriorConfig(BaseModel):
         has_clip = exists(kwargs.pop('clip'))
         kwargs.pop('net')
 
-        clip = None
-        if has_clip:
-            clip = self.clip.create()
-
+        clip = self.clip.create() if has_clip else None
         diffusion_prior_network = self.net.create()
         return DiffusionPrior(net = diffusion_prior_network, clip = clip, **kwargs)
 
